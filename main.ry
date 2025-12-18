@@ -1,0 +1,97 @@
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram import F
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
+import asyncio
+import logging
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
+# Токен второго бота
+TOKEN = "8208626137:AAFap6fQTTPiBpd6ksrW3dV7scXvT9vzZBo"
+
+# Твой ID админа
+ADMIN_ID = 494255577
+
+defaults = DefaultBotProperties(parse_mode=ParseMode.HTML)
+bot = Bot(token=TOKEN, default=defaults)
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
+
+logging.basicConfig(level=logging.INFO)
+
+# Состояния формы
+class LeadForm(StatesGroup):
+    name = State()
+    phone = State()
+    message = State()
+
+# Главное меню
+main_kb = ReplyKeyboardMarkup(keyboard=[
+    [KeyboardButton(text="Оставить заявку 📝")]
+], resize_keyboard=True)
+
+@dp.message(Command("start"))
+async def start(message: types.Message):
+    text = (
+        "<b>Привет! Я — демо-бот для сбора заявок</b> 📞\n\n"
+        "Я помогаю собирать лиды: имя, телефон, сообщение.\n"
+        "Все данные приходят владельцу и сохраняются в Google Sheets.\n\n"
+        "Нажмите кнопку ниже, чтобы оставить тестовую заявку:"
+    )
+    await message.answer(text, reply_markup=main_kb)
+
+@dp.message(F.text == "Оставить заявку 📝")
+async def start_form(message: types.Message, state: FSMContext):
+    await state.set_state(LeadForm.name)
+    await message.answer("Введите ваше имя:", reply_markup=ReplyKeyboardRemove())
+
+@dp.message(LeadForm.name)
+async def get_name(message: types.Message, state: FSMContext):
+    await state.update_data(name=message.text)
+    await state.set_state(LeadForm.phone)
+    await message.answer("Введите ваш телефон:")
+
+@dp.message(LeadForm.phone)
+async def get_phone(message: types.Message, state: FSMContext):
+    await state.update_data(phone=message.text)
+    await state.set_state(LeadForm.message)
+    await message.answer("Напишите ваш вопрос или сообщение:")
+
+@dp.message(LeadForm.message)
+async def get_message(message: types.Message, state: FSMContext):
+    await state.update_data(message=message.text)
+    data = await state.get_data()
+    await state.clear()
+
+    # Сообщение пользователю
+    await message.answer("✅ Спасибо! Ваша заявка принята. Скоро свяжусь!", reply_markup=main_kb)
+
+    # Уведомление админу
+    admin_text = (
+        f"<b>Новая заявка из демо-бота!</b>\n\n"
+        f"👤 Имя: {data['name']}\n"
+        f"📞 Телефон: {data['phone']}\n"
+        f"💬 Сообщение: {data['message']}\n"
+        f"ID пользователя: {message.from_user.id}\n"
+        f"Username: @{message.from_user.username or 'нет'}"
+    )
+    await bot.send_message(ADMIN_ID, admin_text)
+
+    # Запись в Google Sheets (инструкция ниже)
+    try:
+        # Здесь будет код записи в Sheets (добавлю после твоего подтверждения)
+        pass
+    except Exception as e:
+        await bot.send_message(ADMIN_ID, f"Ошибка записи в Sheets: {e}")
+
+async def main():
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
